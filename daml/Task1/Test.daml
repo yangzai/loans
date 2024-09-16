@@ -1,0 +1,36 @@
+module Task1.Test where
+
+import DA.Set qualified as S (fromList)
+
+import Task1.Loans (Loan, LoanRequest(..), ApproveRequest(..))
+import DA.Foldable (forA_)
+import DA.Assert ((===))
+import Daml.Script
+
+
+main : Script ()
+main = do
+    bank <- allocateParty "bank"
+    alice <- allocateParty "alice" -- borrower
+    bob <- allocateParty "bob"
+
+    -- a) A `LoanRequest` contract can be created by the borrower.
+    reqCid <- submit alice $ createCmd LoanRequest with
+        bank
+        borrower = alice
+        amount = 42.0
+
+    let approveReqCmd = exerciseCmd reqCid ApproveRequest
+
+    -- only bank can approve requests
+    forA_ [alice, bob] $ flip submitMustFail approveReqCmd
+
+    -- b) The bank can approve the `LoanRequest` using the `ApproveRequest` choice.
+    loanCid <- submit bank approveReqCmd
+
+    -- c) Upon approval, the `LoanRequest` contract is archived.
+    submitMustFail bank approveReqCmd
+
+    -- d) A new `Loan` contract is created with the borrower and bank as signatories.
+    Some (loan : Loan) <- queryContractId bank loanCid
+    S.fromList (signatory loan) === S.fromList [alice, bank]

@@ -1,0 +1,21 @@
+module Task1.Loans where
+
+
+template LoanRequest with
+    bank : Party -- remove if you want any bank to be able to approve
+    borrower : Party
+    amount : Decimal -- not required for task 1, just for completeness
+  where
+    signatory borrower
+    observer bank
+
+    choice ApproveRequest : ContractId Loan
+      controller bank
+        do create Loan with ..
+
+template Loan with
+    bank : Party
+    borrower : Party
+    amount : Decimal
+  where
+    signatory bank, borrower
