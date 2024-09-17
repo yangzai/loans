@@ -19,8 +19,9 @@ template LoanLimit with
       controller bank
       do create this with amount = amt
 
+
 template LoanRequest with
-    bank : Party -- remove if you want any bank to be able to approve
+    bank : Party
     borrower : Party
     token : Token
     amount : Decimal
@@ -33,8 +34,8 @@ template LoanRequest with
       controller bank
       do
         isWithinLimit <-
-          try ((>= amount) . (.amount) . snd) <$> fetchByKey @LoanLimit bank
-          catch (_ : AnyException) -> pure True
+            try ((>= amount) . (.amount) . snd) <$> fetchByKey @LoanLimit bank
+            catch (_ : AnyException) -> pure True -- no limit
 
         if isWithinLimit
         then create Loan with disbursed = 0.0, ..

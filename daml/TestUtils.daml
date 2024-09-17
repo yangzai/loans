@@ -2,6 +2,18 @@ module TestUtils where
 
 import Daml.Script
 
+data TestParties = TestParties
+    { bank : Party
+    , alice : Party
+    , bob : Party
+    }
 
 allocatePartyWithSameHint : Text -> Script Party
 allocatePartyWithSameHint = allocatePartyWithHint <*> PartyIdHint
+
+createTestParties : Script TestParties
+createTestParties = do
+    bank <- allocatePartyWithSameHint "bank"
+    alice <- allocatePartyWithSameHint "alice"
+    bob <- allocatePartyWithSameHint "bob"
+    pure TestParties {..}

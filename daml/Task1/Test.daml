@@ -6,15 +6,11 @@ import Task1.Loans (Loan, LoanRequest(..), ApproveRequest(..))
 import DA.Foldable (forA_)
 import DA.Assert ((===))
 import Daml.Script
-import TestUtils (allocatePartyWithSameHint)
+import TestUtils (TestParties(..))
 
 
-main : Script ()
-main = do
-    bank <- allocatePartyWithSameHint "bank"
-    alice <- allocatePartyWithSameHint "alice" -- borrower
-    bob <- allocatePartyWithSameHint "bob"
-
+main : TestParties -> Script ()
+main TestParties {bank, alice, bob} = do
     -- Amount should not be 0 or less
     reqCid <- submitMustFail alice $ createCmd LoanRequest with
         bank

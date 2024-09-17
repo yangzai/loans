@@ -4,15 +4,12 @@ import Task2.Loans (LoanRequest(..), LoanLimit(..), ChangeLimit(..), ApproveRequ
 import Task2.Tokens (Token(..), Holding(..), Split(..), Merge(..))
 import DA.Assert ((===))
 import Daml.Script
-import TestUtils (allocatePartyWithSameHint)
+import TestUtils (TestParties(..))
 
 
-main : Script ()
-main = do
-    bank <- allocatePartyWithSameHint "bank"
-    alice <- allocatePartyWithSameHint "alice" -- borrower
-    bob <- allocatePartyWithSameHint "bob"
-
+main : TestParties -> Script ()
+main TestParties {bank, alice, bob} = do
+    -- token can only be minted by issuer
     submitMustFail bob $ createCmd Token with
         id = "USD"
         issuer = bank
@@ -37,6 +34,7 @@ main = do
 
     let approveReqCmd = exerciseCmd reqCid ApproveRequest
 
+    -- requested loan exceeds limit
     submitMustFail bank approveReqCmd
 
     limitCid <- submit bank $ exerciseCmd limitCid ChangeLimit with
@@ -46,6 +44,7 @@ main = do
     -- d) The `LoanRequest` can be approved only if the requested amount does not exceed the bank’s total loan limit.
     loanCid <- submit bank approveReqCmd
 
+    -- no reqpproval; approved request is archived
     submitMustFail bank approveReqCmd
 
     -- c) The token disbursement process and the updating of the `Loan` contract
@@ -75,6 +74,7 @@ main = do
     [bH100Cid, bH101Cid] <- submit bob $ forA [100.0, 101.0] \amt ->
         createCmd Holding with token = bCoin, owner = bank, amount = amt
     
+    -- test merge
     bHCid <- submit bank $ exerciseCmd bH100Cid Merge with hCid = bH101Cid
 
     reqCid' <- submit alice $ createCmd LoanRequest with
@@ -86,13 +86,17 @@ main = do
     -- approval w/o limits should still work
     loanCid' <- submit bank $ exerciseCmd reqCid' ApproveRequest
 
+    -- for tokens not issued by bank
+    -- bank is only allowed to disbursed thru existing holdings owned
+    -- and not thru minting
     submitMustFail bank $ exerciseCmd loanCid' Disburse with
         party = bank
         holdingOrMint = Right 100.0
     submitMustFail bank $ exerciseCmd loanCid' Disburse with
         party = bank
-        holdingOrMint = Left bHCid
+        holdingOrMint = Left bHCid -- exceeds; requires splitting
     
+    -- test split
     (bHCid, _) <- submit bank $ exerciseCmd bHCid Split with
         amt = 200.0
 

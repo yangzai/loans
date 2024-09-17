@@ -2,10 +2,12 @@ module Main where
 import Task1.Test qualified as T1 (main)
 import Task2.Test qualified as T2 (main)
 import Daml.Script
+import TestUtils (createTestParties)
 
 
 main : Script ()
 main = do
-    T1.main
-    -- T2.main
+    tp <- createTestParties
+    -- T1.main tp
+    T2.main tp
     -- TODO
