@@ -1,0 +1,44 @@
+module Task2.Tokens where
+
+
+template Token with
+    id : Text
+    issuer: Party
+  where
+    signatory issuer
+    key (issuer, id) : (Party, Text)
+    maintainer key._1
+
+
+template Holding with
+    token : Token
+    amount : Decimal
+    owner : Party
+  where
+    signatory token.issuer
+    observer owner
+    ensure amount > 0.0
+
+    choice Split : (ContractId Holding, ContractId Holding) with
+        amt : Decimal
+      controller owner
+      do
+        assertMsg "Split amount should be greater than 0." $ amt > 0.0
+        assertMsg "Split amount should be less than holding." $ amt < amount
+        let newHolding x = create this with amount = x
+        (liftA2 . liftA2) (,) newHolding (newHolding . (amount -)) amt
+
+    choice Merge : ContractId Holding with
+        hCid : ContractId Holding
+      controller owner
+      do
+        assertMsg "Cannot merge holding with self." $ self /= hCid
+        holding <- fetch hCid
+        assertMsg "Holdings must belong to the same owner." $ owner == holding.owner
+        assertMsg "Holdings must be of the same token." $ token == holding.token
+        archive hCid *> create this with amount = amount + holding.amount
+
+    choice Transfer : ContractId Holding with
+        party : Party
+      controller owner
+      do create this with owner = party

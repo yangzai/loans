@@ -1,0 +1,108 @@
+module Task2.Test where
+
+import Task2.Loans (LoanRequest(..), LoanLimit(..), ChangeLimit(..), ApproveRequest(..), Disburse(..))
+import Task2.Tokens (Token(..), Holding(..), Split(..), Merge(..))
+import DA.Assert ((===))
+import Daml.Script
+import TestUtils (allocatePartyWithSameHint)
+
+
+main : Script ()
+main = do
+    bank <- allocatePartyWithSameHint "bank"
+    alice <- allocatePartyWithSameHint "alice" -- borrower
+    bob <- allocatePartyWithSameHint "bob"
+
+    submitMustFail bob $ createCmd Token with
+        id = "USD"
+        issuer = bank
+    bCoinCid <- submit bob $ createCmd Token with
+        id = "BOBCOIN"
+        issuer = bob
+    usdCid <- submit bank $ createCmd Token with
+        id = "USD"
+        issuer = bank
+    [Some usd, Some bCoin] <- forA [(bank, usdCid), (bob, bCoinCid)] $ uncurry queryContractId
+
+    -- a) The creation of the `LoanLimit` contract.
+    limitCid <- submit bank $ createCmd LoanLimit with
+        amount = 100.0
+        ..
+
+    reqCid <- submit alice $ createCmd LoanRequest with
+        borrower = alice
+        token = usd
+        amount = 200.0
+        ..
+
+    let approveReqCmd = exerciseCmd reqCid ApproveRequest
+
+    submitMustFail bank approveReqCmd
+
+    limitCid <- submit bank $ exerciseCmd limitCid ChangeLimit with
+        amt = 200.0
+    
+    -- b) The creation and approval of a `LoanRequest`.
+    -- d) The `LoanRequest` can be approved only if the requested amount does not exceed the bank’s total loan limit.
+    loanCid <- submit bank approveReqCmd
+
+    submitMustFail bank approveReqCmd
+
+    -- c) The token disbursement process and the updating of the `Loan` contract
+    (loanCid, hCid) <- submit bank $ exerciseCmd loanCid Disburse with
+        party = bank
+        holdingOrMint = Right 100.0 -- partial disbursement
+
+    submitMustFail bank $ exerciseCmd loanCid Disburse with
+        party = bank
+        holdingOrMint = Right 101.0 -- exceeds
+    (loanCid, hCid') <- submit bank $ exerciseCmd loanCid Disburse with
+        party = bank
+        holdingOrMint = Right 100.0
+    
+    Some loan <- queryContractId alice loanCid
+    loan.disbursed === 200.0
+
+    (_, hs) <- unzip <$> query @Holding alice
+    let aliceUsdAmt = foldl (\acc -> (+ acc) . (.amount)) 0.0
+                    . filter ((== usd) . (.token))
+                    . filter ((== alice) . (.owner))
+                    $ hs
+    aliceUsdAmt === 200.0
+
+
+    -- testing beyond requirements: for holding merege/split and disbursment with exisiting holdings
+    [bH100Cid, bH101Cid] <- submit bob $ forA [100.0, 101.0] \amt ->
+        createCmd Holding with token = bCoin, owner = bank, amount = amt
+    
+    bHCid <- submit bank $ exerciseCmd bH100Cid Merge with hCid = bH101Cid
+
+    reqCid' <- submit alice $ createCmd LoanRequest with
+        borrower = alice
+        token = bCoin
+        amount = 200.0
+        ..
+
+    -- approval w/o limits should still work
+    loanCid' <- submit bank $ exerciseCmd reqCid' ApproveRequest
+
+    submitMustFail bank $ exerciseCmd loanCid' Disburse with
+        party = bank
+        holdingOrMint = Right 100.0
+    submitMustFail bank $ exerciseCmd loanCid' Disburse with
+        party = bank
+        holdingOrMint = Left bHCid
+    
+    (bHCid, _) <- submit bank $ exerciseCmd bHCid Split with
+        amt = 200.0
+
+    (loanCid, hCid) <- submit bank $ exerciseCmd loanCid' Disburse with
+        party = bank
+        holdingOrMint = Left bHCid
+
+    (_, hs) <- unzip <$> query @Holding alice
+    let aliceBCoinAmt   = foldl (\acc -> (+ acc) . (.amount)) 0.0
+                        . filter ((== bCoin) . (.token))
+                        . filter ((== alice) . (.owner))
+                        $ hs
+    aliceBCoinAmt === 200.0

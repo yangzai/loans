@@ -8,3 +8,4 @@ dependencies:
 - daml-script
 start-navigator: false
 init-script: Main:main
+# init-script: Task2.Test:main

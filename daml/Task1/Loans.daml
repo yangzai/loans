@@ -8,6 +8,7 @@ template LoanRequest with
   where
     signatory borrower
     observer bank
+    ensure amount > 0.0
 
     choice ApproveRequest : ContractId Loan
       controller bank
@@ -19,3 +20,4 @@ template Loan with
     amount : Decimal
   where
     signatory bank, borrower
+    ensure amount > 0.0

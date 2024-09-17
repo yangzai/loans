@@ -1,9 +1,11 @@
 module Main where
 import Task1.Test qualified as T1 (main)
+import Task2.Test qualified as T2 (main)
 import Daml.Script
 
 
 main : Script ()
 main = do
     T1.main
-    
+    -- T2.main
+    -- TODO

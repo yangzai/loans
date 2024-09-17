@@ -1,0 +1,7 @@
+module TestUtils where
+
+import Daml.Script
+
+
+allocatePartyWithSameHint : Text -> Script Party
+allocatePartyWithSameHint = allocatePartyWithHint <*> PartyIdHint
