@@ -1,6 +1,6 @@
 module Task2.Loans where
 
-import Task2.Tokens (Transfer(..), Token(..), Holding(..))
+import Task2.Tokens (Holding(..), Token(..), Transfer(..))
 
 
 template LoanLimit with
@@ -33,9 +33,9 @@ template LoanRequest with
     choice ApproveRequest : ContractId Loan
       controller bank
       do
-        isWithinLimit <-
-            try ((>= amount) . (.amount) . snd) <$> fetchByKey @LoanLimit bank
-            catch (_ : AnyException) -> pure True -- no limit
+        isWithinLimit <- lookupByKey @LoanLimit bank >>= optional
+            (pure True) -- no limit
+            (fmap ((>= amount) . (.amount)) . fetch)
 
         if isWithinLimit
         then create Loan with disbursed = 0.0, ..

@@ -1,0 +1,111 @@
+module Task3.Test where
+
+import Daml.Script
+import DA.Assert ((===))
+import Task2.Tokens (Holding, Merge (..), Split(..), Token(..))
+import Task3.Loans (Archive'(..), ApproveRequest(..), ChangeRestriction(..), Disburse(..), Loan, LoanLimit(..), LoanRequest(..), Repay(..), RepaymentRestriction(..))
+import TestUtils (TestParties(..))
+
+
+main : TestParties -> Script ()
+main TestParties {bank, alice, bob} = do
+    sgdCid <- submit bank $ createCmd Token with
+        id = "SGD"
+        issuer = bank
+        
+    Some sgd <- queryContractId bank sgdCid
+
+    reqCid <- submit alice $ createCmd LoanRequest with
+        borrower = alice
+        token = sgd
+        amount = 200.0
+        ..
+
+    -- a) The creation of the `RepaymentRestriction` contract.
+    -- `ApproveRequest`will create a `RepaymentRestriction` 0 (no restiction)
+    -- for bank if it did not exist as it is necesssary to add
+    -- the borrower as an observer before repayment
+    loanCid <- submit bank $ exerciseCmd reqCid ApproveRequest
+
+    (loanCid, h120Cid) <- submit bank $ exerciseCmd loanCid Disburse with
+        party = bank
+        holdingOrMint = Right 120.0 -- partial disbursement
+    
+    (loanCid, h20Cid) <- submit bank $ exerciseCmd loanCid Disburse with
+        party = bank
+        holdingOrMint = Right 20.0 -- partial disbursement
+
+    (h50Cid, h70Cid) <- submit alice $ exerciseCmd h120Cid Split with
+        amt = 50.0
+
+    -- holdings have been minted for alice; none is held by bank
+    (_, hs) <- unzip <$> query @Holding bank
+    let bankUsdAmt  = foldl (\acc -> (+ acc) . (.amount)) 0.0
+                    . filter ((== sgd) . (.token))
+                    . filter ((== bank) . (.owner))
+                    $ hs
+    bankUsdAmt === 0.0
+ 
+    -- repayment w/o restriction (restriction of 0 would be equivalent) should still work
+    (loanCid, _) <- submit alice $ exerciseCmd loanCid Repay with
+        hCid = h20Cid
+    
+    -- this failed because it has already been created during `ApproveRequest`
+    submitMustFail bank $ createCmd RepaymentRestriction with
+        amount = 100.0
+        observers = mempty
+        ..
+    -- so we increase the restriction instead
+    restrictCid <- submit bank $
+        exerciseByKeyCmd @RepaymentRestriction bank ChangeRestriction with
+            amt = 100.0
+    
+    -- now a low repayment will fail
+    submitMustFail alice $ exerciseCmd loanCid Repay with
+        hCid = h70Cid
+
+    -- now we lower the restiction so the same repayment will pass
+    restrictCid <- submit bank $ exerciseCmd restrictCid ChangeRestriction with
+        amt = 70.0
+    (loanCid, _) <- submit alice $ exerciseCmd loanCid Repay with
+        hCid = h70Cid -- partial repayment
+
+    -- this also pass because this is the max repayment we can make until further disbursment
+    -- eventhough it is lower than the restriction
+    (loanCid, _) <- submit alice $ exerciseCmd loanCid Repay with
+        hCid = h50Cid -- partial repayment
+
+    -- at this point we have repayed all disbursed
+    -- but the full disbursment is incomplete
+    -- so archival is not possible
+    Some loan <- queryContractId alice loanCid
+    loan.disbursed === loan.repayed
+    loan.repayed === 120.0 + 20.0
+    submitMustFail bank $ exerciseCmd loanCid Archive'
+
+    -- the bank cannot subvert archival with default archive
+    -- w/o authorisation of the borrower
+    submitMustFail bank $ archiveCmd loanCid
+
+    (loanCid, h60Cid) <- submit bank $ exerciseCmd loanCid Disburse with
+        party = bank
+        holdingOrMint = Right 60.0 -- final disbursement
+
+    -- the last maximum possible repayment should still pass
+    -- regardless of the restiction
+    (loanCid, _) <- submit alice $ exerciseCmd loanCid Repay with
+        hCid = h60Cid
+    
+    submit bank $ exerciseCmd loanCid Archive'
+
+    -- loan is sucessfully archived
+    None <- queryContractId alice loanCid
+    None <- queryContractId bank loanCid
+
+    -- assert that all repayment holdings is successfully transfered to bank
+    (_, hs) <- unzip <$> query @Holding bank
+    let bankUsdAmt = foldl (\acc -> (+ acc) . (.amount)) 0.0
+                    . filter ((== sgd) . (.token))
+                    . filter ((== bank) . (.owner))
+                    $ hs
+    bankUsdAmt === 200.0

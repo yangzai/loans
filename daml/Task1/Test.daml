@@ -2,10 +2,10 @@ module Task1.Test where
 
 import DA.Set qualified as S (fromList)
 
-import Task1.Loans (Loan, LoanRequest(..), ApproveRequest(..))
-import DA.Foldable (forA_)
-import DA.Assert ((===))
 import Daml.Script
+import DA.Assert ((===))
+import DA.Foldable (forA_)
+import Task1.Loans (ApproveRequest(..), Loan, LoanRequest(..))
 import TestUtils (TestParties(..))
 
 

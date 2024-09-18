@@ -1,9 +1,9 @@
 module Task2.Test where
 
-import Task2.Loans (LoanRequest(..), LoanLimit(..), ChangeLimit(..), ApproveRequest(..), Disburse(..))
-import Task2.Tokens (Token(..), Holding(..), Split(..), Merge(..))
-import DA.Assert ((===))
 import Daml.Script
+import DA.Assert ((===))
+import Task2.Loans (ApproveRequest(..), ChangeLimit(..), Disburse(..), LoanLimit(..), LoanRequest(..))
+import Task2.Tokens (Holding(..), Merge(..), Split(..), Token(..))
 import TestUtils (TestParties(..))
 
 
@@ -21,31 +21,35 @@ main TestParties {bank, alice, bob} = do
         issuer = bank
     [Some usd, Some bCoin] <- forA [(bank, usdCid), (bob, bCoinCid)] $ uncurry queryContractId
 
+    let aliceReqCmd = createCmd LoanRequest with
+            borrower = alice
+            token = usd
+            amount = 200.0
+            ..
+
+    -- approval w/o limits should still work
+    reqCid <- submit alice aliceReqCmd
+    submit bank $ exerciseCmd reqCid ApproveRequest
+
     -- a) The creation of the `LoanLimit` contract.
     limitCid <- submit bank $ createCmd LoanLimit with
         amount = 100.0
         ..
 
-    reqCid <- submit alice $ createCmd LoanRequest with
-        borrower = alice
-        token = usd
-        amount = 200.0
-        ..
+    -- with a low limit the same request will fail
+    reqCid <- submit alice aliceReqCmd
+    submitMustFail bank $ exerciseCmd reqCid ApproveRequest
 
-    let approveReqCmd = exerciseCmd reqCid ApproveRequest
-
-    -- requested loan exceeds limit
-    submitMustFail bank approveReqCmd
-
+    -- so we increase the limit
     limitCid <- submit bank $ exerciseCmd limitCid ChangeLimit with
         amt = 200.0
     
     -- b) The creation and approval of a `LoanRequest`.
     -- d) The `LoanRequest` can be approved only if the requested amount does not exceed the bank’s total loan limit.
-    loanCid <- submit bank approveReqCmd
+    loanCid <- submit bank $ exerciseCmd reqCid ApproveRequest
 
-    -- no reqpproval; approved request is archived
-    submitMustFail bank approveReqCmd
+    -- no reapproval; approved request is archived
+    submitMustFail bank $ exerciseCmd reqCid ApproveRequest
 
     -- c) The token disbursement process and the updating of the `Loan` contract
     (loanCid, hCid) <- submit bank $ exerciseCmd loanCid Disburse with
@@ -70,7 +74,9 @@ main TestParties {bank, alice, bob} = do
     aliceUsdAmt === 200.0
 
 
-    -- testing beyond requirements: for holding merege/split and disbursment with exisiting holdings
+    -- testing beyond requirements: for holding merege/split and disbursment with existing holdings
+
+    -- bob minting bobcoin holdings for bank
     [bH100Cid, bH101Cid] <- submit bob $ forA [100.0, 101.0] \amt ->
         createCmd Holding with token = bCoin, owner = bank, amount = amt
     

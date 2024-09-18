@@ -2,7 +2,7 @@ module Task1.Loans where
 
 
 template LoanRequest with
-    bank : Party -- remove if you want any bank to be able to approve
+    bank : Party
     borrower : Party
     amount : Decimal -- not required for task 1, just for completeness
   where

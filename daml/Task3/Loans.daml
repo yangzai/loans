@@ -1,0 +1,137 @@
+module Task3.Loans where
+
+import DA.Set qualified as S (singleton, insert)
+
+import DA.Set (Set)
+import Task2.Tokens (Holding(..), Token(..), Transfer(..))
+
+
+-- assume per bank restriction just like `LoanLimit`
+template RepaymentRestriction with
+    bank : Party
+    observers : Set Party
+    amount : Decimal
+  where
+    signatory bank
+    observer observers
+    key bank : Party
+    maintainer key
+    ensure amount >= 0.0
+
+    choice AddObservers : ContractId RepaymentRestriction with
+        observer : Party
+      controller bank
+      do create this with observers = S.insert observer observers
+
+    choice ChangeRestriction : ContractId RepaymentRestriction with
+        amt : Decimal
+      controller bank
+      do create this with amount = amt
+
+template LoanLimit with
+    bank : Party
+    amount : Decimal
+  where
+    signatory bank
+    -- 1 LoanLimit per bank base on requirements
+    -- otherwise we can key it differently to have token or borrower specific limits
+    key bank : Party
+    maintainer key
+    ensure amount >= 0.0
+
+    choice ChangeLimit : ContractId LoanLimit with
+        amt : Decimal
+      controller bank
+      do create this with amount = amt
+
+
+template LoanRequest with
+    bank : Party
+    borrower : Party
+    token : Token
+    amount : Decimal
+  where
+    signatory borrower
+    observer bank
+    ensure amount > 0.0
+
+    choice ApproveRequest : ContractId Loan
+      controller bank
+      do
+        isWithinLimit <- lookupByKey @LoanLimit bank >>= optional
+            (pure True) -- no limit
+            (fmap ((>= amount) . (.amount)) . fetch)
+
+        if isWithinLimit
+        then do
+            -- new in task 3: add borrower to `RepaymentRestriction` observers
+            lookupByKey @RepaymentRestriction bank >>= \case
+                Some rCid -> exercise rCid AddObservers with observer = borrower
+                _ ->  create RepaymentRestriction with
+                          amount = 0.0
+                          observers = S.singleton borrower, ..
+            create Loan with disbursed = 0.0, repayed = 0.0, ..
+        else fail "Loan request exceeds bank limit."
+
+
+template Loan with
+    bank : Party
+    borrower : Party
+    token : Token
+    amount : Decimal
+    disbursed : Decimal
+    repayed: Decimal
+  where
+    signatory bank, borrower
+    ensure amount > 0.0
+        && disbursed >= 0.0
+        && disbursed <= amount
+        && repayed >= 0.0
+        && repayed <= disbursed
+
+    choice Disburse : (ContractId Loan, ContractId Holding) with
+        party : Party
+        holdingOrMint : Either (ContractId Holding) Decimal
+      controller party -- bank or borrower
+      do
+        (amt, hCid') <- case holdingOrMint of
+            Left hCid -> do -- disburse with existing holdings of tokens
+                h <- fetch hCid
+                (h.amount,) <$> exercise hCid Transfer with party = borrower
+            Right mintAmt -> do -- disburse by minting; only for bank issued tokens
+                assertMsg "Amount to mint amount must be greater than 0." $ mintAmt > 0.0
+                if token.issuer == bank
+                then (mintAmt,) <$> create Holding with amount = mintAmt, owner = borrower, ..
+                else fail "Unable to mint tokens not issued by bank. Bank should disburse from own holdings instead."
+        (, hCid') <$> create this with disbursed = amt + disbursed
+
+    choice Repay : (ContractId Loan, ContractId Holding) with
+        hCid : ContractId Holding
+      controller borrower
+      do
+        h <- fetch hCid
+        isWithinRestict <- lookupByKey @RepaymentRestriction bank >>= optional
+            (pure True) -- no limit
+            (fmap ((<= h.amount) . (.amount)) . fetch)
+    
+        -- exception to banking restriction if it is the maximum payment possible
+        let repayed' = h.amount + repayed
+            isCompletelyRepaysDisbursed = repayed' >= disbursed
+
+        if isWithinRestict || isCompletelyRepaysDisbursed
+        then liftA2 (,) (create this with repayed = repayed')
+            $ exercise hCid Transfer with party = bank
+        else fail "Reypayment falls below bank minimum restriction."
+
+    -- assumption: do not allow partially disbursed loan to be archived
+    -- without additional authorisation from the borrower
+    -- even if all current disbursment has been repayed
+    -- since bank has already agreed on the full loan amount
+    nonconsuming choice Archive' : () with
+      controller bank
+      do
+        if disbursed < amount then
+            fail "Disbursment incomplete."
+        else if repayed < disbursed then
+            fail "Repayment incomplete."
+        else archive self

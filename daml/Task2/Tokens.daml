@@ -19,7 +19,7 @@ template Holding with
     observer owner
     ensure amount > 0.0
 
-    choice Split : (ContractId Holding, ContractId Holding) with
+    nonconsuming choice Split : (ContractId Holding, ContractId Holding) with
         amt : Decimal
       controller owner
       do
@@ -41,4 +41,7 @@ template Holding with
     choice Transfer : ContractId Holding with
         party : Party
       controller owner
-      do create this with owner = party
+      do
+        if party == owner
+        then fail "Cannot transfer to self."
+        else create this with owner = party
