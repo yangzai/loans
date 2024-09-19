@@ -1,12 +1,12 @@
-module Task1.Test where
+module Test.Task1 where
 
 import DA.Set qualified as S (fromList)
 
 import Daml.Script
 import DA.Assert ((===))
 import DA.Foldable (forA_)
-import Task3.Loans (ApproveRequest(..), Loan, LoanRequest(..))
-import Task2.Tokens (Token(..))
+import Loans (ApproveRequest(..), Loan, LoanRequest(..))
+import Tokens (Token(..))
 import TestUtils (TestParties(..))
 
 

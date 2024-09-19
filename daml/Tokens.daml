@@ -1,4 +1,4 @@
-module Task2.Tokens where
+module Tokens where
 
 
 template Token with

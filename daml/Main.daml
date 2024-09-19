@@ -1,7 +1,7 @@
 module Main where
-import Task1.Test qualified as T1 (main)
-import Task2.Test qualified as T2 (main)
-import Task3.Test qualified as T3 (main)
+import Test.Task1 qualified as T1 (main)
+import Test.Task2 qualified as T2 (main)
+import Test.Task3 qualified as T3 (main)
 
 import TestUtils (createTestParties)
 import Daml.Script
@@ -10,6 +10,6 @@ import Daml.Script
 main : Script ()
 main = do
     tp <- createTestParties
-    T1.main tp
-    T2.main tp
-    T3.main tp
+    debug "Start Test 1" *> T1.main tp <* debug "End Test 1"
+    debug "Start Test 2" *> T2.main tp <* debug "End Test 2"
+    debug "Start Test 3" *> T3.main tp <* debug "End Test 3"

@@ -1,9 +1,9 @@
-module Task3.Loans where
+module Loans where
 
 import DA.Set qualified as S (singleton, insert)
 
 import DA.Set (Set)
-import Task2.Tokens (Holding(..), Token(..), Transfer(..))
+import Tokens (Holding(..), Token(..), Transfer(..))
 
 
 -- assume per bank restriction just like `LoanLimit`

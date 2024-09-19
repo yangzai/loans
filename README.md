@@ -13,7 +13,7 @@ Pretty straight forward [Propose and Accept Pattern](https://docs.daml.com/daml/
 - All other tokens would require existing ownership of holdings of the particular token, i.e. the bank cannot mint these out of thin air.
 - Missing limit implies no limit.
 ### Task 3
-- Depends on `Task2.Tokens` as the requirements for tokens and holdings did not change.
+- Depends on `Tokens` from task 2 as the requirements for tokens and holdings did not change.
 - Unlike `LoanLimit` which is created by the bank and only needs to be accessed by the bank during loan approvals, `RepaymentRestriction` is created by the bank and has to be accessed by borrowers during repayment. Consideration is therefore needed as to when and how individual borrowers can be included as observers.
 - The remaining required repayment may fall below the min repayment restriction. In cases where the max payment option fall below the min repayment restriction we should allow repayment without restrictions.
 - Missing restriction implies no restriction.
