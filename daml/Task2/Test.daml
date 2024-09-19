@@ -27,14 +27,18 @@ main TestParties {bank, alice, bob} = do
             amount = 200.0
             ..
 
-    -- approval w/o limits should still work
+    -- a) The creation of the `LoanLimit` contract.
+    -- approval w/o limits would trigger the creation of infinite loan limit
     reqCid <- submit alice aliceReqCmd
     submit bank $ exerciseCmd reqCid ApproveRequest
-
-    -- a) The creation of the `LoanLimit` contract.
-    limitCid <- submit bank $ createCmd LoanLimit with
-        amount = 100.0
+    submitMustFail bank $ createCmd LoanLimit with
+        amountM = Some 100.0
+        utilised = 0.0
+        token = usd
         ..
+
+    limitCid <- submit bank $ exerciseByKeyCmd @LoanLimit (bank, usd) ChangeLimit with
+        amt = 200.0
 
     -- with a low limit the same request will fail
     reqCid <- submit alice aliceReqCmd
@@ -42,7 +46,7 @@ main TestParties {bank, alice, bob} = do
 
     -- so we increase the limit
     limitCid <- submit bank $ exerciseCmd limitCid ChangeLimit with
-        amt = 200.0
+        amt = 400.0
     
     -- b) The creation and approval of a `LoanRequest`.
     -- d) The `LoanRequest` can be approved only if the requested amount does not exceed the bank’s total loan limit.

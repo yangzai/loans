@@ -2,8 +2,8 @@ module Task3.Test where
 
 import Daml.Script
 import DA.Assert ((===))
-import Task2.Tokens (Holding, Merge (..), Split(..), Token(..))
-import Task3.Loans (Archive'(..), ApproveRequest(..), ChangeRestriction(..), Disburse(..), Loan, LoanLimit(..), LoanRequest(..), Repay(..), RepaymentRestriction(..))
+import Task2.Tokens (Holding, Split(..), Token(..))
+import Task3.Loans (Archive'(..), ApproveRequest(..), ChangeRestriction(..), Disburse(..), LoanLimit(..), LoanRequest(..), Repay(..), RepaymentRestriction(..))
 import TestUtils (TestParties(..))
 
 
@@ -46,6 +46,7 @@ main TestParties {bank, alice, bob} = do
                     $ hs
     bankUsdAmt === 0.0
  
+    --  b) The creation and execution of the `Repay` choice on the `Loan` contract.
     -- repayment w/o restriction (restriction of 0 would be equivalent) should still work
     (loanCid, _) <- submit alice $ exerciseCmd loanCid Repay with
         hCid = h20Cid
@@ -75,12 +76,12 @@ main TestParties {bank, alice, bob} = do
     (loanCid, _) <- submit alice $ exerciseCmd loanCid Repay with
         hCid = h50Cid -- partial repayment
 
-    -- at this point we have repayed all disbursed
+    -- at this point we have repaid all disbursed
     -- but the full disbursment is incomplete
     -- so archival is not possible
     Some loan <- queryContractId alice loanCid
-    loan.disbursed === loan.repayed
-    loan.repayed === 120.0 + 20.0
+    loan.disbursed === loan.repaid
+    loan.repaid === 120.0 + 20.0
     submitMustFail bank $ exerciseCmd loanCid Archive'
 
     -- the bank cannot subvert archival with default archive
@@ -96,7 +97,21 @@ main TestParties {bank, alice, bob} = do
     (loanCid, _) <- submit alice $ exerciseCmd loanCid Repay with
         hCid = h60Cid
     
+    -- c) The updating of the total repaid amount on the `Loan` contract.
+    Some loan <- queryContractId bank loanCid
+    loan.repaid === 200.0
+
+    -- assert utilisation before archival
+    Some (_, limit) <- queryContractKey @LoanLimit bank (bank, sgd)
+    limit.utilised === 200.0
+
+    -- d) The archiving of the loan contract when the full loan amount is repaid.
     submit bank $ exerciseCmd loanCid Archive'
+
+    -- e) The updating of the utilized loan amount on the `LoanLimit` contract
+    -- assert utilisation after archival
+    Some (_, limit) <- queryContractKey @LoanLimit bank (bank, sgd)
+    limit.utilised === 0.0
 
     -- loan is sucessfully archived
     None <- queryContractId alice loanCid
