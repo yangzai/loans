@@ -3,8 +3,8 @@ import Test.Task1 qualified as T1 (main)
 import Test.Task2 qualified as T2 (main)
 import Test.Task3 qualified as T3 (main)
 
-import TestUtils (createTestParties)
 import Daml.Script
+import TestUtils (createTestParties)
 
 
 main : Script ()

@@ -6,8 +6,8 @@ import Daml.Script
 import DA.Assert ((===))
 import DA.Foldable (forA_)
 import Loans (ApproveRequest(..), Loan, LoanRequest(..))
-import Tokens (Token(..))
 import TestUtils (TestParties(..))
+import Tokens (Token(..))
 
 
 main : TestParties -> Script ()

@@ -2,6 +2,8 @@ module Loans where
 
 import DA.Set qualified as S (singleton, insert)
 
+import DA.Functor (void)
+import DA.Optional (isNone)
 import DA.Set (Set)
 import Tokens (Holding(..), Token(..), Transfer(..))
 
@@ -30,19 +32,33 @@ template RepaymentRestriction with
 
 template LoanLimit with
     bank : Party
-    amount : Decimal
+    token : Token
+    amountM : Optional Decimal
+    utilised : Decimal
   where
     signatory bank
     -- 1 LoanLimit per bank base on requirements
-    -- otherwise we can key it differently to have token or borrower specific limits
-    key bank : Party
-    maintainer key
-    ensure amount >= 0.0
+    -- but relistically different tokens should not consume the same limit
+    -- so it should be 1 per bank per token
+    key (bank, token) : (Party, Token)
+    maintainer key._1
+    ensure isNone amountM -- no limit
+        || (amountM >= Some 0.0 && Some utilised <= amountM)
 
     choice ChangeLimit : ContractId LoanLimit with
         amt : Decimal
       controller bank
-      do create this with amount = amt
+      do create this with amountM = Some amt
+    
+    choice TakeLimit : ContractId LoanLimit with
+        amt : Decimal
+      controller bank
+      do create this with utilised = utilised + amt
+    
+    choice PutLimit : ContractId LoanLimit with
+        amt : Decimal
+      controller bank
+      do create this with utilised = utilised - amt
 
 
 template LoanRequest with
@@ -58,20 +74,17 @@ template LoanRequest with
     choice ApproveRequest : ContractId Loan
       controller bank
       do
-        isWithinLimit <- lookupByKey @LoanLimit bank >>= optional
-            (pure True) -- no limit
-            (fmap ((>= amount) . (.amount)) . fetch)
+        lookupByKey @LoanLimit (bank, token) >>= \case
+            Some lCid -> exercise lCid TakeLimit with amt = amount
+            _ -> create LoanLimit with amountM = None, utilised = amount, ..
 
-        if isWithinLimit
-        then do
-            -- new in task 3: add borrower to `RepaymentRestriction` observers
-            lookupByKey @RepaymentRestriction bank >>= \case
-                Some rCid -> exercise rCid AddObservers with observer = borrower
-                _ ->  create RepaymentRestriction with
-                          amount = 0.0
-                          observers = S.singleton borrower, ..
-            create Loan with disbursed = 0.0, repayed = 0.0, ..
-        else fail "Loan request exceeds bank limit."
+        -- new in task 3: add borrower to `RepaymentRestriction` observers
+        lookupByKey @RepaymentRestriction bank >>= \case
+            Some rCid -> exercise rCid AddObservers with observer = borrower
+            _ ->  create RepaymentRestriction with
+                      amount = 0.0
+                      observers = S.singleton borrower, ..
+        create Loan with disbursed = 0.0, repaid = 0.0, ..
 
 
 template Loan with
@@ -80,14 +93,14 @@ template Loan with
     token : Token
     amount : Decimal
     disbursed : Decimal
-    repayed: Decimal
+    repaid: Decimal
   where
     signatory bank, borrower
     ensure amount > 0.0
         && disbursed >= 0.0
         && disbursed <= amount
-        && repayed >= 0.0
-        && repayed <= disbursed
+        && repaid >= 0.0
+        && repaid <= disbursed
 
     choice Disburse : (ContractId Loan, ContractId Holding) with
         party : Party
@@ -115,23 +128,30 @@ template Loan with
             (fmap ((<= h.amount) . (.amount)) . fetch)
     
         -- exception to banking restriction if it is the maximum payment possible
-        let repayed' = h.amount + repayed
-            isCompletelyRepaysDisbursed = repayed' >= disbursed
+        let repaid' = h.amount + repaid
+            isCompletelyRepaysDisbursed = repaid' >= disbursed
 
         if isWithinRestict || isCompletelyRepaysDisbursed
-        then liftA2 (,) (create this with repayed = repayed')
+        then liftA2 (,) (create this with repaid = repaid')
             $ exercise hCid Transfer with party = bank
         else fail "Reypayment falls below bank minimum restriction."
 
     -- assumption: do not allow partially disbursed loan to be archived
     -- without additional authorisation from the borrower
-    -- even if all current disbursment has been repayed
+    -- even if all current disbursment has been repaid
     -- since bank has already agreed on the full loan amount
     choice Archive' : () with
       controller bank
       do
         if disbursed < amount then
             fail "Disbursment incomplete."
-        else if repayed < disbursed then
+        else if repaid < disbursed then
             fail "Repayment incomplete."
-        else pure ()
+        else do
+            lookupByKey @LoanLimit (bank, token) >>= \case
+                Some lCid -> void $ exercise lCid PutLimit with amt = amount
+
+                -- repayment happens w/o "utilisation"
+                -- realistically this should not happen
+                -- we could negate or zero utilised, depending on what we what this to mean
+                _ -> void $ create LoanLimit with amountM = None, utilised = negate amount, ..
