@@ -5,23 +5,29 @@ import DA.Set qualified as S (fromList)
 import Daml.Script
 import DA.Assert ((===))
 import DA.Foldable (forA_)
-import Task1.Loans (ApproveRequest(..), Loan, LoanRequest(..))
+import Task3.Loans (ApproveRequest(..), Loan, LoanRequest(..))
+import Task2.Tokens (Token(..))
 import TestUtils (TestParties(..))
 
 
 main : TestParties -> Script ()
 main TestParties {bank, alice, bob} = do
+    tokenCid <- submit bank $ createCmd Token with
+        id = "TOKEN"
+        issuer = bank
+    Some token <- queryContractId bank tokenCid
+
     -- Amount should not be 0 or less
-    reqCid <- submitMustFail alice $ createCmd LoanRequest with
-        bank
+    submitMustFail alice $ createCmd LoanRequest with
         borrower = alice
         amount = -42.0
+        ..
 
     -- a) A `LoanRequest` contract can be created by the borrower.
     reqCid <- submit alice $ createCmd LoanRequest with
-        bank
         borrower = alice
         amount = 42.0
+        ..
 
     let approveReqCmd = exerciseCmd reqCid ApproveRequest
 

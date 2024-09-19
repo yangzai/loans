@@ -127,11 +127,11 @@ template Loan with
     -- without additional authorisation from the borrower
     -- even if all current disbursment has been repayed
     -- since bank has already agreed on the full loan amount
-    nonconsuming choice Archive' : () with
+    choice Archive' : () with
       controller bank
       do
         if disbursed < amount then
             fail "Disbursment incomplete."
         else if repayed < disbursed then
             fail "Repayment incomplete."
-        else archive self
+        else pure ()

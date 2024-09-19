@@ -2,8 +2,8 @@ module Task3.Test where
 
 import Daml.Script
 import DA.Assert ((===))
-import Task2.Tokens (Holding, Merge (..), Split(..), Token(..))
-import Task3.Loans (Archive'(..), ApproveRequest(..), ChangeRestriction(..), Disburse(..), Loan, LoanLimit(..), LoanRequest(..), Repay(..), RepaymentRestriction(..))
+import Task2.Tokens (Holding, Split(..), Token(..))
+import Task3.Loans (Archive'(..), ApproveRequest(..), ChangeRestriction(..), Disburse(..), LoanRequest(..), Repay(..), RepaymentRestriction(..))
 import TestUtils (TestParties(..))
 
 
