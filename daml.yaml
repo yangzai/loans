@@ -1,6 +1,6 @@
 sdk-version: 2.9.4
 name: loan
-version: 0.1.0
+version: 0.1.1
 source: daml
 dependencies:
 - daml-prim
